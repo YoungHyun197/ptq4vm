@@ -16,3 +16,7 @@ reference/
 causal-conv1d/
 work_dirs/
 __pycache__/
+*.swp
+**/__pycache__/**
+*.pth
+*.pt

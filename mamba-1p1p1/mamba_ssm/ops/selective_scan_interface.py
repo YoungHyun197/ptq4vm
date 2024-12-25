@@ -10,7 +10,6 @@ from causal_conv1d import causal_conv1d_fn
 import causal_conv1d_cuda
 import selective_scan_cuda
 
-
 class SelectiveScanFn(torch.autograd.Function):
 
     @staticmethod
@@ -75,16 +74,18 @@ class SelectiveScanFn(torch.autograd.Function):
 
 
 def selective_scan_fn(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_softplus=False,
-                     return_last_state=False):
+                     return_last_state=False, Q_Act=None):
     """if return_last_state is True, returns (out, last_state)
     last_state has shape (batch, dim, dstate). Note that the gradient of the last state is
     not considered in the backward pass.
     """
-    return SelectiveScanFn.apply(u, delta, A, B, C, D, z, delta_bias, delta_softplus, return_last_state)
+
+    return selective_scan_ref(u, delta, A, B, C, D, z, delta_bias, delta_softplus, return_last_state, Q_Act=Q_Act)
+    # return SelectiveScanFn.apply(u, delta, A, B, C, D, z, delta_bias, delta_softplus, return_last_state)
 
 
 def selective_scan_ref(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_softplus=False,
-                      return_last_state=False):
+                      return_last_state=False, Q_Act=None):
     """
     u: r(B D L)
     delta: r(B D L)
@@ -98,6 +99,7 @@ def selective_scan_ref(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta
     out: r(B D L)
     last_state (optional): r(B D dstate) or c(B D dstate)
     """
+
     dtype_in = u.dtype
     u = u.float()
     delta = delta.float()
@@ -132,6 +134,7 @@ def selective_scan_ref(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta
     last_state = None
     for i in range(u.shape[2]):
         x = deltaA[:, :, i] * x + deltaB_u[:, :, i]
+        x = Q_Act(x)
         if not is_variable_C:
             y = torch.einsum('bdn,dn->bd', x, C)
         else:
@@ -156,7 +159,7 @@ class MambaInnerFnNoOutProj(torch.autograd.Function):
 
     @staticmethod
     @custom_fwd
-    def forward(ctx, xz, conv1d_weight, conv1d_bias, x_proj_weight, delta_proj_weight,
+    def forward(ctx, xz, conv1d_weight, conv1d_bias, x_proj, delta_proj,
                 A, B=None, C=None, D=None, delta_bias=None, B_proj_bias=None,
                 C_proj_bias=None, delta_softplus=True, checkpoint_lvl=1):
         """
@@ -164,22 +167,23 @@ class MambaInnerFnNoOutProj(torch.autograd.Function):
         """
         assert checkpoint_lvl in [0, 1]
         L = xz.shape[-1]
-        delta_rank = delta_proj_weight.shape[1]
+        delta_rank = delta_proj.weight.shape[1]
         d_state = A.shape[-1] * (1 if not A.is_complex() else 2)
         if torch.is_autocast_enabled():
-            x_proj_weight = x_proj_weight.to(dtype=torch.get_autocast_gpu_dtype())
-            delta_proj_weight = delta_proj_weight.to(dtype=torch.get_autocast_gpu_dtype())
+            x_proj = x_proj.to(dtype=torch.get_autocast_gpu_dtype())
+            delta_proj = delta_proj.to(dtype=torch.get_autocast_gpu_dtype())
         if xz.stride(-1) != 1:
             xz = xz.contiguous()
         conv1d_weight = rearrange(conv1d_weight, "d 1 w -> d w")
         x, z = xz.chunk(2, dim=1)
         conv1d_bias = conv1d_bias.contiguous() if conv1d_bias is not None else None
         conv1d_out = causal_conv1d_cuda.causal_conv1d_fwd(x, conv1d_weight, conv1d_bias,None, True)
-        # We're being very careful here about the layout, to avoid extra transposes.
-        # We want delta to have d as the slowest moving dimension
-        # and L as the fastest moving dimension, since those are what the ssm_scan kernel expects.
-        x_dbl = F.linear(rearrange(conv1d_out, 'b d l -> (b l) d'), x_proj_weight)  # (bl d)
-        delta = rearrange(delta_proj_weight @ x_dbl[:, :delta_rank].t(), "d (b l) -> b d l", l = L)
+        x_dbl_0 = x_proj(conv1d_out.permute(0,2,1)) #[b l d]
+        x_dbl = x_dbl_0.reshape(-1, x_dbl_0.shape[-1])
+        delta = (delta_proj(x_dbl_0[:,:,:delta_rank]))
+        delta = delta.permute(0,2,1).contiguous()
+        del x_dbl_0
+
         ctx.is_variable_B = B is None
         ctx.is_variable_C = C is None
         ctx.B_proj_bias_is_None = B_proj_bias is None
@@ -196,6 +200,7 @@ class MambaInnerFnNoOutProj(torch.autograd.Function):
         else:
             if B.stride(-1) != 1:
                 B = B.contiguous()
+
         if C is None:  # variable C
             C = x_dbl[:, -d_state:]  # (bl dstate)
             if C_proj_bias is not None:
@@ -208,17 +213,20 @@ class MambaInnerFnNoOutProj(torch.autograd.Function):
         else:
             if C.stride(-1) != 1:
                 C = C.contiguous()
+
         if D is not None:
             D = D.contiguous()
+
         out, scan_intermediates, out_z = selective_scan_cuda.fwd(
-            conv1d_out, delta, A, B, C, D, z, delta_bias, delta_softplus
+            conv1d_out, delta, A, B, C, D, z, None, delta_softplus
         )
+
         ctx.delta_softplus = delta_softplus
         ctx.checkpoint_lvl = checkpoint_lvl
         if checkpoint_lvl >= 1:  # Will recompute conv1d_out and delta in the backward pass
             conv1d_out, delta = None, None
-        ctx.save_for_backward(xz, conv1d_weight, conv1d_bias, x_dbl, x_proj_weight,
-                              delta_proj_weight, conv1d_out, delta,
+        ctx.save_for_backward(xz, conv1d_weight, conv1d_bias, x_dbl, x_proj.weight,
+                              delta_proj.weight, conv1d_out, delta,
                               A, B, C, D, delta_bias, scan_intermediates, out)
         # return rearrange(out_z, "b d l -> b l d")
         return out_z
@@ -283,7 +291,7 @@ class MambaInnerFnNoOutProj(torch.autograd.Function):
         )
         dconv1d_bias = dconv1d_bias if conv1d_bias is not None else None
         dconv1d_weight = rearrange(dconv1d_weight, "d w -> d 1 w")
-        return (dxz, dconv1d_weight, dconv1d_bias, dx_proj_weight, ddelta_proj_weight,
+        return (dxz, dconv1d_weight, dconv1d_bias, None, None,
                 dA, dB, dC, dD,
                 ddelta_bias if delta_bias is not None else None,
                 dB_proj_bias, dC_proj_bias, None)
@@ -628,7 +636,8 @@ def mamba_inner_fn_no_out_proj(
     xz, conv1d_weight, conv1d_bias, x_proj_weight, delta_proj_weight,
     A, B=None, C=None, D=None, delta_bias=None, B_proj_bias=None,
     C_proj_bias=None, delta_softplus=True
-):
+):  
+        
     return MambaInnerFnNoOutProj.apply(xz, conv1d_weight, conv1d_bias, x_proj_weight, delta_proj_weight,
                               A, B, C, D, delta_bias, B_proj_bias, C_proj_bias, delta_softplus)
 
@@ -637,13 +646,20 @@ def mamba_inner_ref(
     xz, conv1d_weight, conv1d_bias, x_proj_weight, delta_proj_weight,
     out_proj_weight, out_proj_bias,
     A, B=None, C=None, D=None, delta_bias=None, B_proj_bias=None,
-    C_proj_bias=None, delta_softplus=True
+    C_proj_bias=None, delta_softplus=True, Q_Act=None,
 ):
     L = xz.shape[-1]
     delta_rank = delta_proj_weight.shape[1]
     d_state = A.shape[-1] * (1 if not A.is_complex() else 2)
+    
+   
+    if xz.stride(-1) != 1:
+        xz = xz.contiguous()
+    conv1d_weight = rearrange(conv1d_weight, "d 1 w -> d w") 
     x, z = xz.chunk(2, dim=1)
-    x = causal_conv1d_fn(x, rearrange(conv1d_weight, "d 1 w -> d w"), conv1d_bias, "silu")
+    conv1d_bias = conv1d_bias.contiguous() if conv1d_bias is not None else None
+    x = causal_conv1d_cuda.causal_conv1d_fwd(x, conv1d_weight, conv1d_bias,None, True)
+    # x = causal_conv1d_fn(x, rearrange(conv1d_weight, "d 1 w -> d w"), conv1d_bias, "silu")
     # We're being very careful here about the layout, to avoid extra transposes.
     # We want delta to have d as the slowest moving dimension
     # and L as the fastest moving dimension, since those are what the ssm_scan kernel expects.
@@ -666,8 +682,10 @@ def mamba_inner_ref(
             C = rearrange(C, "(b l) dstate -> b dstate l", l=L).contiguous()
         else:
             C = rearrange(C, "(b l) (dstate two) -> b dstate (l two)", l=L, two=2).contiguous()
-    y = selective_scan_fn(x, delta, A, B, C, D, z=z, delta_bias=delta_bias, delta_softplus=True)
-    return F.linear(rearrange(y, "b d l -> b l d"), out_proj_weight, out_proj_bias)
+    y = selective_scan_fn(x, delta, A, B, C, D, z=z, delta_bias=delta_bias, delta_softplus=True, Q_Act=Q_Act)
+    
+    return y
+    #return F.linear(rearrange(y, "b d l -> b l d"), out_proj_weight, out_proj_bias)
 
 
 def bimamba_inner_ref(

@@ -16,7 +16,7 @@ except ImportError:
     causal_conv1d_fn, causal_conv1d_update = None
 
 try:
-    from mamba_ssm.ops.selective_scan_interface import selective_scan_fn, mamba_inner_fn, bimamba_inner_fn, mamba_inner_fn_no_out_proj
+    from mamba_ssm.ops.selective_scan_interface import selective_scan_fn, mamba_inner_fn, bimamba_inner_fn, mamba_inner_fn_no_out_proj , mamba_inner_ref
 except ImportError:
     selective_scan_fn, mamba_inner_fn, bimamba_inner_fn, mamba_inner_fn_no_out_proj = None, None, None, None, None
 
@@ -29,7 +29,6 @@ try:
     from mamba_ssm.ops.triton.layernorm import RMSNorm, layer_norm_fn, rms_norm_fn
 except ImportError:
     RMSNorm, layer_norm_fn, rms_norm_fn = None, None, None
-
 
 class Mamba(nn.Module):
     def __init__(
@@ -67,6 +66,9 @@ class Mamba(nn.Module):
         self.bimamba_type = bimamba_type
         self.if_divide_out = if_divide_out
 
+        # self.act_func = Q.Act()
+        
+        
         self.init_layer_scale = init_layer_scale
         if init_layer_scale is not None:
             self.gamma = nn.Parameter(init_layer_scale * torch.ones((d_model)), requires_grad=True)
@@ -171,8 +173,9 @@ class Mamba(nn.Module):
         hidden_states: (B, L, D)
         Returns: same shape as hidden_states
         """
-        batch, seqlen, dim = hidden_states.shape
 
+        batch, seqlen, dim = hidden_states.shape
+        
         conv_state, ssm_state = None, None
         if inference_params is not None:
             conv_state, ssm_state = self._get_states_from_cache(inference_params, batch)
@@ -182,15 +185,15 @@ class Mamba(nn.Module):
                 return out
 
         # We do matmul and transpose BLH -> HBL at the same time
-        xz = rearrange(
-            self.in_proj.weight @ rearrange(hidden_states, "b l d -> d (b l)"),
-            "d (b l) -> b d l",
-            l=seqlen,
-        )
-        if self.in_proj.bias is not None:
-            xz = xz + rearrange(self.in_proj.bias.to(dtype=xz.dtype), "d -> d 1")
+        # xz = rearrange(
+        #     self.in_proj.weight @ rearrange(hidden_states, "b l d -> d (b l)"),
+        #     "d (b l) -> b d l",
+        #     l=seqlen,
+        # )
 
+        xz = self.in_proj(hidden_states).permute(0,2,1)
         A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
+
         # In the backward pass we write dx and dz next to each other to avoid torch.cat
         if self.use_fast_path and inference_params is None:  # Doesn't support outputting the states
             if self.bimamba_type == "v1":
@@ -217,8 +220,8 @@ class Mamba(nn.Module):
                     xz,
                     self.conv1d.weight,
                     self.conv1d.bias,
-                    self.x_proj.weight,
-                    self.dt_proj.weight,
+                    self.x_proj,
+                    self.dt_proj,
                     A,
                     None,  # input-dependent B
                     None,  # input-dependent C
@@ -230,8 +233,8 @@ class Mamba(nn.Module):
                     xz.flip([-1]),
                     self.conv1d_b.weight,
                     self.conv1d_b.bias,
-                    self.x_proj_b.weight,
-                    self.dt_proj_b.weight,
+                    self.x_proj_b,
+                    self.dt_proj_b,
                     A_b,
                     None,
                     None,
@@ -243,8 +246,9 @@ class Mamba(nn.Module):
                 if not self.if_divide_out:
                     out = F.linear(rearrange(out + out_b.flip([-1]), "b d l -> b l d"), self.out_proj.weight, self.out_proj.bias)
                 else:
-                    out = F.linear(rearrange(out + out_b.flip([-1]), "b d l -> b l d") / 2, self.out_proj.weight, self.out_proj.bias)
-
+                    out = rearrange(out + out_b.flip([-1]), "b d l -> b l d") / 2    
+                    out = self.out_proj(out)   
+                    # out = F.linear(rearrange(out + out_b.flip([-1]), "b d l -> b l d") / 2, self.out_proj.weight, self.out_proj.bias)
             else:
                 out = mamba_inner_fn(
                     xz,
