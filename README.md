@@ -4,7 +4,6 @@ This is official code for the paper [PTQ4VM].
 
 
 ## How to use
-You can reproduce the result of MobileNet-v2 for avgbit and bops options
 * Generate activation smoothing scale  
 ```
 torchrun --nproc_per_node 1 generate_act_scale.py --resume [model-path] --model vim_small_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2 --data-path [imagenet path] --batch-size 256
