@@ -18,7 +18,7 @@ torchrun --nproc_per_node 1 quant.py --eval --resume [model-path] --model vim_ti
 For experimental details and hyper-paramters, please refer to the paper and `quant.py` file
 
        
-
+<!--
 ## Installation  
 + Python verseion >= 3.7.13 
 + Pytorch >= 1.12.1
@@ -27,3 +27,4 @@ For experimental details and hyper-paramters, please refer to the paper and `qua
 ```
 docker run -v {local_code_loc}:{container_code_loc} -v {local_dataset_loc}:{container_dataset_loc} -it --gpus=all pytorch/pytorch:1.12.1-cuda11.3-cudnn8-devel 
 ```
+-->
