@@ -18,7 +18,7 @@ from timm.optim import create_optimizer
 from timm.utils import NativeScaler, get_state_dict, ModelEma
 
 from tools.datasets import build_dataset
-from tools.engine import evaluate
+from tools.engine import evaluate, time_measure
 import tools.utils as utils
 from tools.samplers import RASampler
 from contextlib import suppress
@@ -95,6 +95,7 @@ def get_args_parser():
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--resume', default='', help='resume from checkpoint')
+    parser.add_argument('--time_compare', action='store_true', help='comparing time Kernel vs FP')
     parser.add_argument('--eval', action='store_true', help='Perform evaluation only')
     parser.add_argument('--eval-crop-ratio', default=0.875, type=float, help="Crop ratio for evaluation")
     parser.add_argument('--dist-eval', action='store_true', default=False, help='Enabling distributed evaluation')
@@ -211,6 +212,44 @@ def main(args):
     # amp about
     amp_autocast = suppress
     
+    if args.time_compare:
+        checkpoint = torch.load(args.resume, map_location='cpu')
+        msg = model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
+        print(msg)
+
+        # time measure for FP
+        time_measure(data_loader_val, model, amp_autocast, 100)
+
+        # time measure for Kernel
+        from ptq4vm.quantizer import QuantOps as Q
+
+        if Q is not None:
+            for name, module in model_without_ddp.named_modules():
+                if isinstance(module, nn.Linear):
+                    if 'out_proj' in name or 'in_proj' in name or 'x_proj' in name or 'dt_proj' in name:
+                        quantlinear = Q.Linear(module.in_features, module.out_features, 
+                                            act_func=Q.Act(), bias=False if module.bias is None else True, 
+                                            device=module.weight.device)
+                        quantlinear.weight.data = module.weight
+                        if module.bias is not None:
+                            quantlinear.bias.data = module.bias
+                        add_new_module(name, model_without_ddp, quantlinear)
+                        del quantlinear
+
+        for name, module in model_without_ddp.named_modules():
+            module.name = name 
+
+        act_scales = torch.load(args.act_scales)
+        from ptq4vm.jlss import JLSS
+        JLSS(model_without_ddp, args, data_loader_train, device, act_scales)
+
+        for name, module in model_without_ddp.named_modules():
+                if isinstance(module, Q.Linear):
+                    module.set_real_int8()
+                    module.act_func.set_real_int8()
+        
+        time_measure(data_loader_val, model_without_ddp, amp_autocast, 100)
+
     if args.resume:
         checkpoint = torch.load(args.resume, map_location='cpu')
         msg = model_without_ddp.load_state_dict(checkpoint['model'], strict=False)

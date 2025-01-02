@@ -9,6 +9,9 @@ import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 import numpy as np 
 from collections import OrderedDict
+import vim_GEMM
+
+REAL_INT8 = True
 
 class RoundQuant(torch.autograd.Function):
     @staticmethod
@@ -48,6 +51,9 @@ class Q_Linear(nn.Linear):
         self.num = 100
         self.eps = torch.tensor(1e-8)
         self.smoothing = False
+        self.real_int8 = False
+        self.qbit = 4
+        self.int_weight = torch.Tensor(1)
         
     def quantize_efficient(self, x_round, scale, zero=0):
         q = torch.clamp(x_round + zero, self.qmin , self.qmax)
@@ -65,6 +71,15 @@ class Q_Linear(nn.Linear):
         self.n_lv = n_lv
         self.qmax = n_lv // 2 - 1
         self.qmin = -self.qmax
+    
+    def set_real_int8(self):
+        self.real_int8 = True
+        if self.n_lv == 256:
+            self.int_weight = torch.tensor(self.weight.to(torch.int8))
+            self.qbit = 8
+        elif self.n_lv == 16:
+            self.int_weight = torch.tensor(self.weight.to(torch.int8))[:, :self.weight.shape[1]//2]
+            self.qbit = 4
 
     def initialize(self, n_lv, per_channel=False, trunc=False):
         x = self.weight * self.act_func.smooth_scale
@@ -143,8 +158,20 @@ class Q_Linear(nn.Linear):
     def forward(self, x):
         if self.act_func is not None:
             x = self.act_func(x)
-
-        if self.n_lv == 0:    
+        
+        if self.real_int8:
+            #import pdb; pdb.set_trace()
+            # print(x.shape)
+            # print(self.int_weight.shape)
+            result = vim_GEMM.vim_GEMM(x.contiguous(), \
+                    self.int_weight.contiguous(), \
+                    self.act_func.smooth_scale, \
+                    self.act_func.s, \
+                    self.s, \
+                    16, \
+                    self.qbit)
+            return result
+        elif self.n_lv == 0:    
             if self.smoothing:
                 weight = self.weight * self.act_func.smooth_scale
             else:
@@ -171,6 +198,7 @@ class Q_Act(nn.Module):
         # self.smooth_scale = None
         self.smoothing = False
         # self.smoothing = True # for 6-bit
+        self.real_int8 = False
         
     def quantize_efficient(self, x_round, scale, zero=0):
         q = torch.clamp(x_round + zero, self.qmin , self.qmax)
@@ -188,6 +216,9 @@ class Q_Act(nn.Module):
         self.n_lv = n_lv
         self.qmax = n_lv // 2 - 1
         self.qmin = -self.qmax
+    
+    def set_real_int8(self):
+        self.real_int8 = True 
 
     def initialize(self, n_lv, tensor, per_token=False, trunc=False):
         x = tensor / self.smooth_scale
@@ -276,7 +307,8 @@ class Q_Act(nn.Module):
 
         
     def forward(self, x):
-
+        if self.real_int8: # Kernel includes act quant procedure
+            return x
         if self.n_lv == 0:
             if self.smoothing:
                 return x / self.smooth_scale

@@ -14,6 +14,9 @@ from timm.data import Mixup
 from timm.utils import accuracy, ModelEma
 
 from tools import utils
+import statistics
+from tqdm import tqdm
+import time
 
 @torch.no_grad()
 def evaluate(data_loader, model, device, amp_autocast):
@@ -46,3 +49,20 @@ def evaluate(data_loader, model, device, amp_autocast):
           .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
 
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+
+
+@torch.no_grad()
+def time_measure(data_loader, model, amp_autocast, test_turn):
+    model.eval()
+    B = data_loader.batch_size
+    C, H, W = data_loader.dataset[0][0].shape
+    sample_image = torch.randn(B,C,H,W).to('cuda')
+
+    time_per_batch = []
+    for i in tqdm(range(test_turn)):
+        with amp_autocast():
+            start = time.time()
+            output = model(sample_image)
+            time_per_batch.append(time.time() - start)
+    print(f"{statistics.median(time_per_batch):.8f} sec")
+    return statistics.median(time_per_batch)
