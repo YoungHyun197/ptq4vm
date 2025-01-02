@@ -21,3 +21,6 @@ __pycache__/
 *.pth
 *.pt
 cutlass
+build
+dist
+vim_GEMM.egg-info

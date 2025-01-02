@@ -13,6 +13,25 @@ torchrun --nproc_per_node 1 generate_act_scale.py --resume [model-path] --model 
 ```
 torchrun --nproc_per_node 1 quant.py --eval --resume [model-path] --model vim_tiny_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2 --data-path [imagenet-path] --act_scales [smoothing-path] --batch-size 256 --qmode ptq4vm --train-batch 256 --n-lva 16 --n-lvw 16 --epochs 100 --lr-a 5e-4 --lr-w 5e-4 --lr-s 1e-2
 ```
++ CUDA Kernel measurement
+1. Install the CUDA Kernel
+```
+cd cuda_measure
+```
+```
+python setup_vim_GEMM.py install
+```
+
+2. Check the layer-wise acceleration
+```
+python cuda_sandbox.py
+```
+
+2. Check the end-to-end acceleration
+```
+torchrun --nproc_per_node 1 quant.py --eval --time_compare --resume [model-path] --model vim_tiny_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2 --data-path [imagenet-path] --act_scales [smoothing-path] --batch-size 256 --qmode ptq4vm --train-batch 256 --n-lva 16 --n-lvw 16 --alpha 0.5 --epochs 100 --lr-a 5e-4 --lr-w 5e-4 --lr-s 1e-2
+```
+
 
 For experimental details and hyper-paramters, please refer to the paper and `quant.py` file
 
