@@ -14,8 +14,8 @@ conda activate ptq4vm
 
 2. Clone the PTQ4VM repository
 ```
-git clone https://github.com/YoungHyun197/tmp_ptq4vm
-cd tmp_ptq4vm
+git clone https://github.com/YoungHyun197/ptq4vm
+cd ptq4vm
 ```
 
 3. Install the dependencies
@@ -39,7 +39,7 @@ python ./cuda_measure/setup_vim_GEMM.py install
 Here we use Vision Mamba (Vim) model as an example.
 ### Generate activation smoothing scale  
 ```
-torchrun --nproc_per_node 1 generate_act_scale.py --resume [model-path] --model vim_small_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2 --data-path [imagenet path] --batch-size 256
+torchrun --nproc_per_node 1 generate_act_scale.py --resume [model-path] --model vim_tiny_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2 --data-path [imagenet path] --batch-size 256
 ```
 
 ### Joint Learning of Smoothing Scale and Step size (JLSS)
