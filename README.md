@@ -36,7 +36,7 @@ python ./cuda_measure/setup_vim_GEMM.py install
 ```
 
 ## How to use PTQ4VM
-Here we use Vision Mamba (Vim) model as an example. Before applying ptq4vm, prepare a pre-trained model. You can download the ckpt file from this [url](https://huggingface.co/hustvl/Vim-tiny-midclstok).
+Here we use Vision Mamba (Vim) model as an example. Before applying ptq4vm, prepare a pre-trained model. You can download the model from this [url](https://huggingface.co/hustvl/Vim-tiny-midclstok).
 
 ### Generate activation smoothing scale  
 ```
