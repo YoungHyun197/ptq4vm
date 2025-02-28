@@ -1,4 +1,4 @@
-# [WACV 2025] PTQ4VM: Post-training Quantization for Visual Mamba
+# [WACV 2025 (Oral)] PTQ4VM: Post-training Quantization for Visual Mamba
 
 This is official code for the paper [PTQ4VM](https://arxiv.org/abs/2412.20386).
 
