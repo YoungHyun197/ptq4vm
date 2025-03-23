@@ -34,7 +34,7 @@ Before applying ptq4vm, prepare a pre-trained model. You can download the model 
 
 ### Generate activation smoothing scale  
 ```
-torchrun --nproc_per_node 1 generate_act_scale.py --resume [model-path] --model vim_tiny_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2 --data-path [imagenet path] --batch-size 256
+torchrun --nproc_per_node 1 generate_act_scale.py --cfg configs/vssm/vmambav2v_tiny_224.yaml --data-path [imagenet path] --output /tmp --pretrained [model-path] --batch-size 256 --scales-output-path ./act_scales
 ```
 
 ### Joint Learning of Smoothing Scale and Step size (JLSS)
