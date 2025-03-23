@@ -38,6 +38,7 @@ python ./cuda_measure/setup_vim_GEMM.py install
 ## How to use PTQ4VM
 Here we use Vision Mamba (Vim) model as an example. Before applying ptq4vm, prepare a pre-trained model. You can download the model from this [url](https://huggingface.co/hustvl/Vim-tiny-midclstok).
 
+You can check the VMamba example at this [url](https://github.com/YoungHyun197/ptq4vm/tree/main/VMamba)
 ### Generate activation smoothing scale  
 ```
 torchrun --nproc_per_node 1 generate_act_scale.py --resume [model-path] --model vim_tiny_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2 --data-path [imagenet path] --batch-size 256
