@@ -67,11 +67,6 @@ class Q_Linear(nn.Linear):
             y = torch.flatten(x, 1)
             return y.mean(1)
 
-    def set_bits(self, n_lv):
-        self.n_lv = n_lv
-        self.qmax = n_lv // 2 - 1
-        self.qmin = -self.qmax
-    
     def set_real_int8(self):
         self.real_int8 = True
         if self.n_lv == 256:
@@ -187,16 +182,15 @@ class Q_Linear(nn.Linear):
 class Q_Act(nn.Module):
     def __init__(self):
         super(Q_Act, self).__init__()
+        # n_lv, qmax, qmin -> refer initialize() function
         self.n_lv = 0
-        self.qmax = self.n_lv - 1
+        self.qmax = 0
         self.qmin = 0
         self.per_channel = False
         self.s = Parameter(torch.Tensor(1))
         self.num = 100
         self.eps = torch.tensor(1e-8)
-        # self.smooth_scale = None
         self.smoothing = False
-        # self.smoothing = True # for 6-bit
         self.real_int8 = False
         
     def quantize_efficient(self, x_round, scale, zero=0):
@@ -211,11 +205,6 @@ class Q_Act(nn.Module):
             y = torch.flatten(x, 1)
             return y.mean(1)
 
-    def set_bits(self, n_lv):
-        self.n_lv = n_lv
-        self.qmax = n_lv // 2 - 1
-        self.qmin = -self.qmax
-    
     def set_real_int8(self):
         self.real_int8 = True 
 
