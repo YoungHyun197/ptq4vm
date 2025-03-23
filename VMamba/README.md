@@ -2,7 +2,6 @@
 ## Install
 To properly run our code, you need to create a new virtual environment because VMamba uses a different selective_scan kernel than Vim.
 
-
 1. Setting conda
 ```
 conda create -n ptq4vm_vmamba python=3.10 -y
@@ -26,6 +25,10 @@ pip install --pre -U triton
 
 ## How to use PTQ4VM
 Before applying ptq4vm, prepare a pre-trained model. You can download the model from this [url](https://github.com/MzeroMiko/VMamba).
+
+```
+cd classification
+```
 
 ### Generate activation smoothing scale  
 ```
