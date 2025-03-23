@@ -51,5 +51,5 @@ For experimental details and hyper-paramters, please refer to the paper and `qua
 ## Reference
 [VMamba: Visual State Space Model](https://arxiv.org/abs/2401.10166)
 
-This example code is based on [Vim](https://github.com/MzeroMiko/VMamba).
+This example code is based on [VMamba](https://github.com/MzeroMiko/VMamba).
 
