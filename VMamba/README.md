@@ -24,11 +24,6 @@ cd kernels/selective_scan && pip install .
 pip install --pre -U triton
 ```
 
-4.  Replace core implementation of Mamba
-```
-cp -rf mamba-1p1p1/mamba_ssm /opt/conda/lib/python3.10/site-packages
-```
-
 ## How to use PTQ4VM
 Before applying ptq4vm, prepare a pre-trained model. You can download the model from this [url](https://github.com/MzeroMiko/VMamba).
 
