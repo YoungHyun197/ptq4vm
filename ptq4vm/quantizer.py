@@ -188,9 +188,8 @@ class Q_Act(nn.Module):
     def __init__(self):
         super(Q_Act, self).__init__()
         self.n_lv = 0
-        # self.n_lv = 64 # fot 6-bit
-        self.qmax = self.n_lv // 2 - 1
-        self.qmin = -self.qmax
+        self.qmax = self.n_lv - 1
+        self.qmin = 0
         self.per_channel = False
         self.s = Parameter(torch.Tensor(1))
         self.num = 100
