@@ -162,9 +162,9 @@ def JLSS(
     }   
     
     
-    omni_parameters = {}
+
     for i in range(len(layers)):
-        for j in range(len(layers[i])):
+        for j in range(len(layers[i].blocks)):
             
             print(f"=== Start quantize layer.{i}.blocks.{j} ===")
 
@@ -204,15 +204,11 @@ def JLSS(
                 
                 weight_params, act_params = get_quant_parameters(qlayer)
                 smooth_params = get_smooth_parameters(qlayer)
-                # params = get_quant_parameters(qlayer)
                 optimizer = torch.optim.AdamW(
                     [{"params":weight_params,"lr":args.lr_w}, 
                     {"params":act_params, "lr":args.lr_a}, 
                     {"params":smooth_params, "lr":args.lr_s}], weight_decay=1e-5)
-                # optimizer = torch.optim.AdamW(
-                #     [{"params":params,"lr":args.lr_w}], weight_decay=1e-5)            
-                # optimizer = torch.optim.AdamW(
-                #     [{"params":let_parameters(qlayer),"lr":args.lr}, {"params":lwc_parameters(qlayer),"lr":args.lwc_lr}],weight_decay=0)
+
                 loss_scaler = NativeScalerWithGradNormCount()
                 for epochs in range(args.epochs):
                     loss_list = []
@@ -220,12 +216,7 @@ def JLSS(
                     for k in range(args.batch_size//int(args.train_batch)):    
                         index = k * int(args.train_batch)
                         quant_out = qlayer(quant_inps[index:index+int(args.train_batch),])
-
-                        # loss = loss_func(fp_inps[index:index+int(args.train_batch),].float(), quant_out.float())
-                        
                         loss = (1 - F.cosine_similarity(fp_inps[index:index+int(args.train_batch),].float(), quant_out.float(), dim=-1)).mean() # Cosine Similarity
-                        # if args.aug_loss:
-                        #     loss += loss_func(fp_inps_2[index:index+int(args.train_batch),], quant_out)
                         if not math.isfinite(loss.item()):
                             print("Loss is NAN, stopping training")
                             breakpoint()
@@ -239,11 +230,8 @@ def JLSS(
                     norm_mean = torch.stack(norm_list).mean()
                     if epochs % 50 == 0 or epochs == args.epochs-1:
                         print(f"layer {i} iter {epochs} loss:{loss_mean} norm:{norm_mean} max memory_allocated {torch.cuda.max_memory_allocated(dev) / 1024**2} ")
-                # clear_temp_variable(qlayer)
+
                 del optimizer
-                # qlayer.half() 
-                # real smooth and quantization
-                # smooth_and_quant_inplace(qlayer, args)
             if args.epochs>0:
                 # update input of quantization model
                 with torch.no_grad():
@@ -251,12 +239,8 @@ def JLSS(
                         index = k * int(args.train_batch)
                         quant_inps[index:index+int(args.train_batch),] = qlayer(quant_inps[index:index+int(args.train_batch),])
 
-                # register_scales_and_zeros(qlayer)
                 layers[i].blocks[j] = qlayer.to("cpu")
-                # omni_parameters[i] = omni_state_dict(qlayer)
-                # torch.save(omni_parameters, os.path.join(args.output_dir, f"omni_parameters.pth"))
-                # breakpoint()
-        
+
         
         if i < len(layers) - 1 :
             downsample = layers[i].downsample.to(dev)
@@ -285,6 +269,4 @@ def JLSS(
 
     torch.cuda.empty_cache()
     gc.collect()                    
-    # model.config.use_cache = use_cache
-    # model.half()
     return model.to(dev)

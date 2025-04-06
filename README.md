@@ -4,6 +4,9 @@ This is official code for the paper [PTQ4VM](https://arxiv.org/abs/2412.20386).
 
 PTQ4VM can be applied to various Visual Mamba backbones, converting the pretrained model to a quantized format in under 15 minutes without notable quality degradation.
 
+## Updates
+* **`Apr. 6th, 2025`**: Update: We fixed the code of VMamba. There was a slight performance drop at 4-bit. We have updated it on arxiv, please check it out.
+* **`Mar. 3rd, 2025`**: Update: we release the code of VMamba.
 
 ## Install
 1. Setting conda
