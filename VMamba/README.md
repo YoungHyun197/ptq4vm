@@ -37,7 +37,7 @@ torchrun --nproc_per_node 1 generate_act_scale.py --cfg configs/vssm/vmambav2v_t
 
 ### Joint Learning of Smoothing Scale and Step size (JLSS)
 ```
-torchrun --nproc_per_node 1 quant.py --cfg configs/vssm/vmambav2v_tiny_224.yaml  --data-path [imagenet-path] --output /tmp --pretrained [model-path] --act_scales [smoothing-path] --batch-size 256 --qmode ptq4vm  --train-batch 32 --epochs 50 --lr-a 1e-4 --lr-w 1e-4 --lr-s 1e-4 --n-lva 16 --n-lvw 16
+torchrun --nproc_per_node 1 quant.py --cfg configs/vssm/vmambav2v_tiny_224.yaml  --data-path [imagenet-path] --output /tmp --pretrained [model-path] --act_scales [smoothing-path] --batch-size 256 --qmode ptq4vm  --train-batch 32 --epochs 50 --lr-a 1e-4 --lr-w 1e-4 --lr-s 1e-4 --n-lva 16 --n-lvw 16 --alpha 0.65
 ```
 - n-lva (n-lvw) : activation (weight) quantizaiton levels (8/6/4-bit: 256/64/16)  
   - Refer to the `initialize()` function of Q_Linear and Q_Act classes in ptq4vm/quantizer.py
